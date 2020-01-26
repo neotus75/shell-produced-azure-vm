@@ -139,7 +139,14 @@ namespace shell_produced_azure_vm
         {
             try
             {
-                var credentials = SdkContext.AzureCredentialsFactory.FromFile(@"D:\Documents\클라우드\OneDrive - Microsoft\프로젝트\코딩폴더\vmcreation\vmcreation\azure.auth");
+                /* 
+                 * TO CREATE AUTH FILE
+                 * 1) az login
+                 * 2) az account set --subscription <name or id>
+                 * 3) az ad sp create-for-rbac --sdk-auth > azure-service-principal.auth
+                 */
+                 
+                var credentials = SdkContext.AzureCredentialsFactory.FromFile(@"D:\Documents\클라우드\OneDrive - Microsoft\프로젝트\암호파일\azure-service-principal.auth");
                 var azure = Azure.Configure()
                     .WithLogLevel(HttpLoggingDelegatingHandler.Level.Basic)
                     .Authenticate(credentials)
