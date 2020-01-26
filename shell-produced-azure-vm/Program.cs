@@ -53,7 +53,29 @@ namespace shell_produced_azure_vm
                          .WithPriority(100)
                          .WithDescription("Allow Windows RDP")
                      .Attach()
-                     .Create();
+                     
+                     .DefineRule("ALLOW-WINRM-HTTP")
+                        .AllowInbound()
+                        .FromAnyAddress()
+                        .FromAnyPort()
+                        .ToAnyAddress()
+                        .ToPort(5985)
+                        .WithProtocol(SecurityRuleProtocol.Tcp)
+                        .WithPriority(110)
+                        .WithDescription("Allow WinRM HTTP Port")
+                    .Attach()
+
+                    .DefineRule("ALLOW-WINRM-HTTPS")
+                        .AllowInbound()
+                        .FromAnyAddress()
+                        .FromAnyPort()
+                        .ToAnyAddress()
+                        .ToPort(5986)
+                        .WithProtocol(SecurityRuleProtocol.Tcp)
+                        .WithPriority(120)
+                        .WithDescription("Allow WinRM HTTPS Port")
+                    .Attach()
+                    .Create();
 
                 Console.WriteLine($"Creating Network (Virtual NET): {vnetName} with Subnet: {subnetName}...");
                 var vnet = azure.Networks
