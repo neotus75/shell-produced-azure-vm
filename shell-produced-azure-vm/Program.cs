@@ -23,6 +23,9 @@ namespace shell_produced_azure_vm
             Console.Write("Enter Admin Password: ");
             string password = Console.ReadLine();
 
+            Console.Write("Enter Root Domain Name: ");
+            string domainName = Console.ReadLine();
+
             try
             {
                 if (azure.ResourceGroups.Contain(resourceGroupName))
@@ -38,11 +41,18 @@ namespace shell_produced_azure_vm
                     .WithRegion(deploymentRegion)
                     .Create();
 
+                Console.WriteLine($"Creating Azure DNS Zone: {domainName}...");
+                var dnsZone = azure.DnsZones
+                    .Define(domainName)
+                    .WithExistingResourceGroup(resourceGroupName)
+                    .Create();
+
                 Console.WriteLine($"Creating Network Security Grouop: {networkSecurityGroupName}...");
                 var networkSecurityGroups = azure.NetworkSecurityGroups
                      .Define(networkSecurityGroupName)
                      .WithRegion(deploymentRegion)
                      .WithExistingResourceGroup(resourceGroup)
+
                      .DefineRule("ALLOW-RDP")
                          .AllowInbound()
                          .FromAnyAddress()
@@ -75,6 +85,18 @@ namespace shell_produced_azure_vm
                         .WithPriority(120)
                         .WithDescription("Allow WinRM HTTPS Port")
                     .Attach()
+
+                    .DefineRule("ALLOW-SSH")
+                        .AllowInbound()
+                        .FromAnyAddress()
+                        .FromAnyPort()
+                        .ToAnyAddress()
+                        .ToPort(22)
+                        .WithProtocol(SecurityRuleProtocol.Tcp)
+                        .WithPriority(130)
+                        .WithDescription("Allow SSH Port for Linux Hosts")
+                    .Attach()
+
                     .Create();
 
                 Console.WriteLine($"Creating Network (Virtual NET): {vnetName} with Subnet: {subnetName}...");
@@ -92,6 +114,7 @@ namespace shell_produced_azure_vm
                     .WithRegion(deploymentRegion)
                     .WithExistingResourceGroup(resourceGroup);
 
+                Console.WriteLine("Preparing to create Windows VMs...");
                 var machines = new List<ICreatable<IVirtualMachine>>();
 
                 for (int i = 1; i <= vmCount; i++)
@@ -136,14 +159,68 @@ namespace shell_produced_azure_vm
                     machines.Add(vm);
                 }
 
+                // always create 2 linux VMs 
+                Console.WriteLine("Preparing to create 2 Linux VMs...");
+
+                for (int i = 1; i <= 2; i++)
+                {
+                    var vmname = $"LX-{i.ToString("D2")}";
+
+                    Console.WriteLine($"Creating Public IP Address: pip-lx-{i.ToString("D2")}...");
+                    var pip = azure.PublicIPAddresses
+                        .Define($"pip-lx-{i.ToString("D2")}")
+                        .WithRegion(deploymentRegion)
+                        .WithExistingResourceGroup(resourceGroup)
+                        .WithStaticIP()
+                        .WithLeafDomainLabel($"{vmname}")
+                        .WithSku(PublicIPSkuType.Standard)
+                        .Create();
+
+                    Console.WriteLine($"Creating Network Interface: nic-lx-{i.ToString("D2")}...");
+                    var nic = azure.NetworkInterfaces
+                        .Define($"nic-lx-{i.ToString("D2")}")
+                        .WithRegion(deploymentRegion)
+                        .WithExistingResourceGroup(resourceGroup)
+                        .WithExistingPrimaryNetwork(vnet)
+                        .WithSubnet(subnetName)
+                        .WithPrimaryPrivateIPAddressDynamic()
+                        .WithExistingPrimaryPublicIPAddress(pip)
+                        .WithExistingNetworkSecurityGroup(networkSecurityGroups)
+                        .WithIPForwarding()
+                        .Create();
+
+                    var vm = azure.VirtualMachines
+                        .Define(vmname)
+                        .WithRegion(deploymentRegion)
+                        .WithExistingResourceGroup(resourceGroup)
+                        .WithExistingPrimaryNetworkInterface(nic)
+                        .WithPopularLinuxImage(KnownLinuxVirtualMachineImage.UbuntuServer16_04_Lts)
+                        .WithRootUsername(userName)
+                        .WithRootPassword(password)
+                        .WithComputerName(vmname)
+                        .WithSize(VirtualMachineSizeTypes.StandardDS3V2)
+                        .WithNewStorageAccount(storage);
+
+                    machines.Add(vm);
+                }
+
                 var startTime = DateTimeOffset.Now.UtcDateTime;
 
-                Console.WriteLine($"Creating {vmCount} virtual machines in parallel...");
+                Console.WriteLine($"Creating {vmCount + 2} virtual machines in parallel...");
                 var vms = azure.VirtualMachines.Create(machines.ToArray());
+                Console.WriteLine($"Creating {vmCount + 2} virtual machines in parallel completed...");
 
+                // update DNS entries...
+                Console.WriteLine($"Updating DNS Entries in {domainName}...");
                 foreach (var instance in vms)
                 {
-                    Console.WriteLine(instance.Id);
+                    dnsZone = dnsZone.Update()
+                        .DefineARecordSet(instance.Name)
+                        .WithIPv4Address(instance.GetPrimaryPublicIPAddress().IPAddress)
+                        .Attach()
+                        .Apply();
+
+                    Console.WriteLine("\n" + instance.Id);
                 }
                 var endTime = DateTimeOffset.Now.UtcDateTime;
 
@@ -151,9 +228,16 @@ namespace shell_produced_azure_vm
             }
             catch(Exception ex)
             {
-                Console.WriteLine(ex);
-                azure.ResourceGroups.DeleteByName(resourceGroupName);
-                Console.WriteLine($"Deleted resource group : {resourceGroupName}");
+                try
+                {
+                    Console.WriteLine(ex);
+                    azure.ResourceGroups.DeleteByName(resourceGroupName);
+                    Console.WriteLine($"Deleted resource group : {resourceGroupName}");
+                }
+                catch(Exception)
+                {
+                    Console.WriteLine("Did not create any resources in Azure. No clean up is needed.");
+                }
             }
         }
 
