@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "D:\\Documents\\클라우드\\OneDrive - Microsoft\\프로젝트\\코딩폴더\\shell-produced-azure-vm\\shell-produced-azure-vm\\shell-produced-azure-vm.csproj": {}
+    "C:\\Users\\Patrick Shim\\Documents\\클라우드\\OneDrive - Microsoft\\프로젝트\\코딩폴더\\shell-produced-azure-vm\\shell-produced-azure-vm\\shell-produced-azure-vm.csproj": {}
   },
   "projects": {
-    "D:\\Documents\\클라우드\\OneDrive - Microsoft\\프로젝트\\코딩폴더\\shell-produced-azure-vm\\shell-produced-azure-vm\\shell-produced-azure-vm.csproj": {
+    "C:\\Users\\Patrick Shim\\Documents\\클라우드\\OneDrive - Microsoft\\프로젝트\\코딩폴더\\shell-produced-azure-vm\\shell-produced-azure-vm\\shell-produced-azure-vm.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\Documents\\클라우드\\OneDrive - Microsoft\\프로젝트\\코딩폴더\\shell-produced-azure-vm\\shell-produced-azure-vm\\shell-produced-azure-vm.csproj",
+        "projectUniqueName": "C:\\Users\\Patrick Shim\\Documents\\클라우드\\OneDrive - Microsoft\\프로젝트\\코딩폴더\\shell-produced-azure-vm\\shell-produced-azure-vm\\shell-produced-azure-vm.csproj",
         "projectName": "shell-produced-azure-vm",
-        "projectPath": "D:\\Documents\\클라우드\\OneDrive - Microsoft\\프로젝트\\코딩폴더\\shell-produced-azure-vm\\shell-produced-azure-vm\\shell-produced-azure-vm.csproj",
+        "projectPath": "C:\\Users\\Patrick Shim\\Documents\\클라우드\\OneDrive - Microsoft\\프로젝트\\코딩폴더\\shell-produced-azure-vm\\shell-produced-azure-vm\\shell-produced-azure-vm.csproj",
         "packagesPath": "C:\\Users\\Patrick Shim\\.nuget\\packages\\",
-        "outputPath": "D:\\Documents\\클라우드\\OneDrive - Microsoft\\프로젝트\\코딩폴더\\shell-produced-azure-vm\\shell-produced-azure-vm\\obj\\",
+        "outputPath": "C:\\Users\\Patrick Shim\\Documents\\클라우드\\OneDrive - Microsoft\\프로젝트\\코딩폴더\\shell-produced-azure-vm\\shell-produced-azure-vm\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "C:\\Users\\Patrick Shim\\AppData\\Roaming\\NuGet\\NuGet.Config",

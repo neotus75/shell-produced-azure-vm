@@ -7,6 +7,8 @@ using Microsoft.Azure.Management.ResourceManager.Fluent.Core;
 using Microsoft.Azure.Management.ResourceManager.Fluent.Core.ResourceActions;
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using Microsoft.Azure.Management.Network.Fluent;
 
 namespace shell_produced_azure_vm
 {
@@ -35,23 +37,26 @@ namespace shell_produced_azure_vm
                     Console.WriteLine($"{resourceGroupName} deleted...");
                 }
 
-                Console.WriteLine($"Creating Resource Grouop: {resourceGroupName}...");
+                // create resource group
+                Console.WriteLine($"Creating Resource Group: {resourceGroupName}...");
                 var resourceGroup = azure.ResourceGroups
                     .Define(resourceGroupName)
                     .WithRegion(deploymentRegion)
                     .Create();
 
+                // create DNS Zone
                 Console.WriteLine($"Creating Azure DNS Zone: {domainName}...");
                 var dnsZone = azure.DnsZones
                     .Define(domainName)
                     .WithExistingResourceGroup(resourceGroupName)
                     .Create();
 
-                Console.WriteLine($"Creating Network Security Grouop: {networkSecurityGroupName}...");
+                // create Network Security Group
+                Console.WriteLine($"Creating Network Security Group: {networkSecurityGroupName}...");
                 var networkSecurityGroups = azure.NetworkSecurityGroups
                      .Define(networkSecurityGroupName)
-                     .WithRegion(deploymentRegion)
-                     .WithExistingResourceGroup(resourceGroup)
+                         .WithRegion(deploymentRegion)
+                         .WithExistingResourceGroup(resourceGroup)
 
                      .DefineRule("ALLOW-RDP")
                          .AllowInbound()
@@ -97,6 +102,17 @@ namespace shell_produced_azure_vm
                         .WithDescription("Allow SSH Port for Linux Hosts")
                     .Attach()
 
+                    .DefineRule("ALLOW-CHAT-SERVER")
+                        .AllowInbound()
+                        .FromAnyAddress()
+                        .FromAnyPort()
+                        .ToAnyAddress()
+                        .ToPort(56675)
+                        .WithProtocol(SecurityRuleProtocol.Tcp)
+                        .WithPriority(140)
+                        .WithDescription("Allow custom Chat Server Port")
+                    .Attach()
+
                     .Create();
 
                 Console.WriteLine($"Creating Network (Virtual NET): {vnetName} with Subnet: {subnetName}...");
@@ -116,6 +132,7 @@ namespace shell_produced_azure_vm
 
                 Console.WriteLine("Preparing to create Windows VMs...");
                 var machines = new List<ICreatable<IVirtualMachine>>();
+                var fronts = new List<IHasNetworkInterfaces>();
 
                 for (int i = 1; i <= vmCount; i++)
                 {
@@ -130,7 +147,7 @@ namespace shell_produced_azure_vm
                         .WithLeafDomainLabel($"{vmname}")
                         .WithSku(PublicIPSkuType.Standard)
                         .Create();
-
+                    
                     Console.WriteLine($"Creating Network Interface: nic-{i.ToString("D2")}...");
                     var nic = azure.NetworkInterfaces
                         .Define($"nic-{i.ToString("D2")}")
@@ -155,12 +172,21 @@ namespace shell_produced_azure_vm
                         .WithComputerName(vmname)
                         .WithSize(VirtualMachineSizeTypes.StandardDS3V2)
                         .WithNewStorageAccount(storage);
-
+                    
                     machines.Add(vm);
+                }
+
+                // add the virtual machines to load balancer
+                var frontEndVms = azure.VirtualMachines.Create(machines.ToArray());
+               
+                foreach (var instance in frontEndVms)
+                {
+                    fronts.Add(instance);
                 }
 
                 // always create 2 linux VMs 
                 Console.WriteLine("Preparing to create 2 Linux VMs...");
+                machines.Clear();
 
                 for (int i = 1; i <= 2; i++)
                 {
@@ -207,12 +233,14 @@ namespace shell_produced_azure_vm
                 var startTime = DateTimeOffset.Now.UtcDateTime;
 
                 Console.WriteLine($"Creating {vmCount + 2} virtual machines in parallel...");
-                var vms = azure.VirtualMachines.Create(machines.ToArray());
+                var linuxVms = azure.VirtualMachines.Create(machines.ToArray());
                 Console.WriteLine($"Creating {vmCount + 2} virtual machines in parallel completed...");
 
                 // update DNS entries...
                 Console.WriteLine($"Updating DNS Entries in {domainName}...");
-                foreach (var instance in vms)
+              
+
+                foreach (var instance in frontEndVms)
                 {
                     dnsZone = dnsZone.Update()
                         .DefineARecordSet(instance.Name)
@@ -223,6 +251,43 @@ namespace shell_produced_azure_vm
                     Console.WriteLine("\n" + instance.Id);
                 }
                 var endTime = DateTimeOffset.Now.UtcDateTime;
+
+                var albip = azure.PublicIPAddresses
+                    .Define($"alb-pip-01")
+                    .WithRegion(deploymentRegion)
+                    .WithExistingResourceGroup(resourceGroup)
+                    .WithStaticIP()
+                    .WithLeafDomainLabel("alb-pip-01")
+                    .WithSku(PublicIPSkuType.Standard)
+                    .Create();
+
+                var alb = azure.LoadBalancers
+                    .Define("alb-01")
+                        .WithRegion(deploymentRegion)
+                        .WithExistingResourceGroup(resourceGroupName)
+
+                    .DefineLoadBalancingRule("alb-rule")
+                        .WithProtocol(TransportProtocol.Tcp)
+                    
+                    .FromExistingPublicIPAddress(albip)
+                    
+                        .FromFrontendPort(56675)
+                        .ToBackend("backend-pool")
+                        .WithLoadDistribution(LoadDistribution.Default)
+                        .WithProbe("alb-probe")
+                        .Attach()
+                    
+                    .DefineTcpProbe("alb-probe")
+                        .WithPort(56675)
+                        .WithIntervalInSeconds(300)
+                        .WithNumberOfProbes(3)
+                        .Attach()
+                    .DefineBackend("backend-pool")
+                        .Attach()
+                    .WithSku(LoadBalancerSkuType.Standard)
+                    .Create();
+
+                alb.Update().UpdateBackend("backend-pool").WithExistingVirtualMachines(fronts).Parent().Apply();
 
                 Console.WriteLine($"Created VM: took {(endTime - startTime).TotalSeconds} seconds");
             }
@@ -251,8 +316,8 @@ namespace shell_produced_azure_vm
                  * 2) az account set --subscription <name or id>
                  * 3) az ad sp create-for-rbac --sdk-auth > azure-service-principal.auth
                  */
-                 
-                var credentials = SdkContext.AzureCredentialsFactory.FromFile(@"D:\Documents\클라우드\OneDrive - Microsoft\프로젝트\암호파일\azure-service-principal.auth");
+
+                var credentials = SdkContext.AzureCredentialsFactory.FromFile(@"C:\Users\Patrick Shim\Documents\클라우드\OneDrive - Microsoft\프로젝트\암호파일\azure-service-principal.auth");
                 var azure = Azure.Configure()
                     .WithLogLevel(HttpLoggingDelegatingHandler.Level.Basic)
                     .Authenticate(credentials)
